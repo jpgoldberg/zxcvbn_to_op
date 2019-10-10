@@ -20,14 +20,14 @@ fn main() {
         },
     ];
 
-    println!("{}", equations_points(&points).unwrap()); // just print out what our functions are
+    println!("{}", equations_points(&points).expect("expected message")); // just print out what our functions are
 
     // should really be doing this in test functions
     for z in &[
-        -1.0, 0.0, 0.3, 2.0, 3.5, 4.2, 5.5, 6.2, 8.4, 9.0, 11.0, 12.0, 13.6, 15.0, 16.0, 17.0,
-        18.1, 19.0, 19.9, 21.0, 24.0,
+        0.0, 0.3, 2.0, 3.5, 4.2, 5.5, 6.2, 8.4, 9.0, 11.0, 12.0, 13.6, 15.0, 16.0, 17.0, 18.1,
+        19.0, 19.9, 21.0, 24.0, 120.0,
     ] {
-        let op = op_score_from_zxcvbn(*z, &points).unwrap();
+        let op = op_score_from_zxcvbn(*z, &points).expect(&format!("expected score for {}", z));
         println!("f({}) = {}", z, op);
     }
 }
@@ -68,8 +68,13 @@ fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(f32) -> f32>> {
 fn op_score_from_zxcvbn(zx_score: f32, points: &Vec<Point>) -> Option<f32> {
     // We need to create a sequence of linear functions based on pairs of points
 
+    // We need at least two points to create at least one line segment
     if points.len() < 2 {
         return None;
+    }
+
+    if zx_score < 0.0 {
+        return None; // weird input should signal some sort of error
     }
 
     // Internally, we need to keep a list of range endpoints and the function
@@ -115,7 +120,10 @@ fn op_score_from_zxcvbn(zx_score: f32, points: &Vec<Point>) -> Option<f32> {
 fn equations_points(points: &Vec<Point>) -> Option<String> {
     // assumes that points are already sorted
     if points.len() < 2 {
-        return None;
+        return Some(format!(
+            "Not enough points ({}) to create any equations",
+            points.len()
+        ));
     }
 
     let mut messages = String::new();
@@ -135,7 +143,7 @@ fn equations_points(points: &Vec<Point>) -> Option<String> {
         let b = line(0.0);
         let m = (line(first.zx) - line(second.zx)) / (first.zx - second.zx);
 
-        messages.push_str(&format!("\nFor points {} and {}\n", first, second));
+        messages.push_str(&format!("\nFor points {} and {}:", first, second));
         messages.push_str(&format!("\ty = {}x + {}", m, b));
     }
 
