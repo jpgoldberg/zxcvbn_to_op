@@ -1,5 +1,4 @@
 extern crate float_cmp;
-extern crate zxcvbn;
 
 use float_cmp::ApproxEqRatio;
 
@@ -21,21 +20,15 @@ fn main() {
         },
     ];
 
-    lines_from_points(&points); // just print out what our functions are
-
-    let a_function = mapping_from_control_points(&points).unwrap();
+    println!("{}", equations_points(&points).unwrap()); // just print out what our functions are
 
     // should really be doing this in test functions
     for z in &[
         -1.0, 0.0, 0.3, 2.0, 3.5, 4.2, 5.5, 6.2, 8.4, 9.0, 11.0, 12.0, 13.6, 15.0, 16.0, 17.0,
-        18.1, 19.0, 19.9, 21.0,
+        18.1, 19.0, 19.9, 21.0, 24.0,
     ] {
-        println!("Via mapping: f({}) = {}", z, a_function(*z as f32));
-        println!(
-            "Via compute: f({}) = {}",
-            z,
-            compute_op_from_zxcvbn(*z, &points).unwrap()
-        );
+        let op = op_score_from_zxcvbn(*z, &points).unwrap();
+        println!("f({}) = {}", z, op);
     }
 }
 
@@ -72,50 +65,7 @@ fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(f32) -> f32>> {
     Some(Box::new(move |x| x * m + b))
 }
 
-fn compute_op_from_zxcvbn(op: f32, points: &Vec<Point>) -> Option<f32> {
-    // We need to create a sequence of linear functions based on pairs of points
-
-    if points.len() < 2 {
-        return None;
-    }
-
-    // Internally, we need to keep a list of range endpoints and the function
-    // we have for that range
-
-    struct Segment {
-        upper: f32,
-        line_function: Box<dyn Fn(f32) -> f32>,
-    };
-
-    let mut segments: Vec<Segment> = Vec::new();
-    segments.reserve_exact(points.len() - 1);
-
-    // this looping could be done more nicely with iter and nth(). But
-    // I'm old and don't know these new fangled things that kids use today.
-    //
-    // Deliberately starts at 1, as we look at element and the _previous_ element
-    for i in 1..points.len() {
-        let first = &points[i - 1];
-        let second = &points[i];
-        segments.push(Segment {
-            upper: second.zx,
-            line_function: line_from_points(first, second)?,
-        });
-    }
-
-    // segments has all of the information I need to build the actual function that we return
-    // if creating it manually, and knowing how many segments there were, we'd use a match
-    // construction. There probably is a clever way to do that, but let's not be so clever
-    for s in &segments {
-        if op < s.upper {
-            return Some((s.line_function)(op));
-        }
-    }
-    Some(100.0)
-}
-
-/// This assumes that the input is already sorted properly. Might add sorting later
-fn mapping_from_control_points(points: &Vec<Point>) -> Option<Box<dyn Fn(f32) -> f32>> {
+fn op_score_from_zxcvbn(zx_score: f32, points: &Vec<Point>) -> Option<f32> {
     // We need to create a sequence of linear functions based on pairs of points
 
     if points.len() < 2 {
@@ -150,30 +100,32 @@ fn mapping_from_control_points(points: &Vec<Point>) -> Option<Box<dyn Fn(f32) ->
     // if creating it manually, and knowing how many segments there were, we'd use a match
     // construction. There probably is a clever way to do that, but let's not be so clever
 
-    Some(Box::new(move |x| {
-        let mut ret = 100.0;
-        for s in &segments {
-            if x < s.upper {
-                ret = (s.line_function)(x);
-                break;
-            }
-        }
-        ret
-    }))
+    let ret = (segments
+        .into_iter()
+        .find(|s| s.upper > zx_score)
+        .unwrap_or(Segment {
+            upper: std::f32::MAX,
+            line_function: Box::new(|_| 100 as f32),
+        })
+        .line_function)(zx_score);
+
+    Some(ret)
 }
 
-fn lines_from_points(points: &Vec<Point>) {
+fn equations_points(points: &Vec<Point>) -> Option<String> {
     // assumes that points are already sorted
     if points.len() < 2 {
-        return;
+        return None;
     }
+
+    let mut messages = String::new();
 
     // we loop through from the second member, and we need an index.
     // Probably could use nth() but that requires reading docs
     for i in 1..points.len() {
         let first = &points[i - 1];
         let second = &points[i];
-        let line = line_from_points(first, second).unwrap();
+        let line = line_from_points(first, second)?;
 
         // just for debugging, I want a local m and b computed from line
 
@@ -183,7 +135,9 @@ fn lines_from_points(points: &Vec<Point>) {
         let b = line(0.0);
         let m = (line(first.zx) - line(second.zx)) / (first.zx - second.zx);
 
-        println!("\nFor points {} and {}", first, second);
-        println!("\ty = {}x + {}", m, b);
+        messages.push_str(&format!("\nFor points {} and {}\n", first, second));
+        messages.push_str(&format!("\ty = {}x + {}", m, b));
     }
+
+    Some(messages)
 }
