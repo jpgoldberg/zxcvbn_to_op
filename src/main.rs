@@ -4,30 +4,29 @@ use float_cmp::ApproxEqRatio;
 
 use std::fmt;
 
-fn main() {
-    // control points determined by eyeballing OP vs ZXCVBN scatter plot
-    let points = vec![
-        Point { zx: 0.0, op: 1.0 },
-        Point { zx: 4.0, op: 8.0 },
-        Point { zx: 5.0, op: 22.0 },
-        Point { zx: 7.5, op: 40.0 },
-        Point { zx: 12.0, op: 57.0 },
-        Point { zx: 15.0, op: 65.0 },
-        Point { zx: 17.0, op: 88.0 },
-        Point {
-            zx: 20.0,
-            op: 100.0,
-        },
-    ];
+const MAX_OP_STRENGTH_SCORE: f32 = 100.0;
 
-    println!("{}", equations_points(&points).expect("expected message")); // just print out what our functions are
+/// // control points determined by eyeballing OP vs ZXCVBN scatter plot
+const CONTROL_POINTS: &'static [&'static Point] = &[
+    &Point { zx: 0.0, op: 1.0 },
+    &Point { zx: 4.0, op: 8.0 },
+    &Point { zx: 8.0, op: 45.0 },
+    &Point { zx: 14.0, op: 57.0 },
+    &Point {
+        zx: 20.0,
+        op: 100.0,
+    },
+];
+
+fn main() {
+    println!("{}", equations_points(CONTROL_POINTS).expect("expected message")); // just print out what our functions are
 
     // should really be doing this in test functions
     for z in &[
         0.0, 0.3, 2.0, 3.5, 4.2, 5.5, 6.2, 8.4, 9.0, 11.0, 12.0, 13.6, 15.0, 16.0, 17.0, 18.1,
         19.0, 19.9, 21.0, 24.0, 120.0,
     ] {
-        let op = op_score_from_zxcvbn(*z, &points).expect(&format!("expected score for {}", z));
+        let op = op_score_from_zxcvbn(*z, CONTROL_POINTS).expect(&format!("expected score for {}", z));
         println!("f({}) = {}", z, op);
     }
 }
@@ -65,7 +64,7 @@ fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(f32) -> f32>> {
     Some(Box::new(move |x| x * m + b))
 }
 
-fn op_score_from_zxcvbn(zx_score: f32, points: &Vec<Point>) -> Option<f32> {
+fn op_score_from_zxcvbn(zx_score: f32, points:  &'static [&'static Point]) -> Option<f32> {
     // We need to create a sequence of linear functions based on pairs of points
 
     // We need at least two points to create at least one line segment
@@ -91,7 +90,7 @@ fn op_score_from_zxcvbn(zx_score: f32, points: &Vec<Point>) -> Option<f32> {
     // this looping could be done more nicely with iter and nth(). But
     // I'm old and don't know these new fangled things that kids use today.
     //
-    // Deliberately starts at 1, as we look at element and the _previous_ element
+    // Deliberately starts at 1, as we look at element and the one _before_ it
     for i in 1..points.len() {
         let first = &points[i - 1];
         let second = &points[i];
@@ -101,23 +100,25 @@ fn op_score_from_zxcvbn(zx_score: f32, points: &Vec<Point>) -> Option<f32> {
         });
     }
 
-    // segments has all of the information I need to build the actual function that we return
-    // if creating it manually, and knowing how many segments there were, we'd use a match
-    // construction. There probably is a clever way to do that, but let's not be so clever
-
+    // segments now has all of the information need to compute the op score.
     let ret = (segments
         .into_iter()
         .find(|s| s.upper > zx_score)
+        // If we don't find anything, we've gone over the top of our defined range
+        // and so return our maximum op_score
         .unwrap_or(Segment {
             upper: std::f32::MAX,
-            line_function: Box::new(|_| 100 as f32),
+            line_function: Box::new(|_| MAX_OP_STRENGTH_SCORE),
         })
         .line_function)(zx_score);
 
     Some(ret)
 }
 
-fn equations_points(points: &Vec<Point>) -> Option<String> {
+// This is just for printing out information about what is
+// computed from sets of points. It plays no role in actually converting
+// anything
+fn equations_points(points: &'static [&'static Point]) -> Option<String> {
     // assumes that points are already sorted
     if points.len() < 2 {
         return Some(format!(
