@@ -129,17 +129,10 @@ fn equations_points(points: &'static [&'static Point]) -> Option<String> {
 
     let mut messages = String::new();
 
-    // we loop through from the second member, and we need an index.
-    // Probably could use nth() but that requires reading docs
-    for i in 1..points.len() {
-        let first = &points[i - 1];
-        let second = &points[i];
+    for pair in points.windows(2) {
+        let first = pair[0];
+        let second = pair[1];
         let line = line_from_points(first, second)?;
-
-        // just for debugging, I want a local m and b computed from line
-
-        assert!(line(first.zx).approx_eq_ratio(&first.op, 0.0001));
-        assert!(line(second.zx).approx_eq_ratio(&second.op, 0.0001));
 
         let b = line(0.0);
         let m = (line(first.zx) - line(second.zx)) / (first.zx - second.zx);
