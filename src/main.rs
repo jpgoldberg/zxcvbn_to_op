@@ -5,7 +5,7 @@ use std::ops::{Sub,Div};
 
 use std::fmt;
 
-const MAX_OP_STRENGTH_SCORE: f32 = 100.0;
+const MAX_OP_STRENGTH_SCORE: OpScore = OpScore(100.0);
 
 #[derive(PartialEq,PartialOrd,Clone,Copy)]
 struct ZxScore(pub f32);
@@ -44,6 +44,14 @@ impl Sub for ZxScore {
     type Output = Self;
     fn sub(self, other: Self) -> Self::Output {
         ZxScore(self.value() - other.value())
+    }
+}
+
+
+impl Sub for OpScore {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self::Output {
+        OpScore(self.value() - other.value())
     }
 }
 
@@ -115,7 +123,7 @@ impl fmt::Display for Point {
 /// returns a function the the strait line that goes through points p1 and p2
 /// Technically this returns a closure, but the closure is boxed with fixed
 /// values moved into it. So it's easier to think of it as a function.
-fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(ZxScore) -> f32>> {
+fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(ZxScore) -> OpScore>> {
     // just some convenience naming
     let x1 = p1.zx.to_f32();
     let y1 = p1.op.to_f32();
@@ -130,10 +138,10 @@ fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(ZxScore) -> f32
     let m = (y2 - y1) / (x2 - x1);
     let b = y1 - (m * x1);
 
-    Some(Box::new(move |x| x.to_f32() * m + b))
+    Some(Box::new(move |x| OpScore(x.value() * m + b)))
 }
 
-fn op_score_from_zxcvbn(zx_score: ZxScore, points: &'static [&'static Point]) -> Option<f32> {
+fn op_score_from_zxcvbn(zx_score: ZxScore, points: &'static [&'static Point]) -> Option<OpScore> {
     // We need to create a sequence of linear functions based on pairs of points
 
     // We need at least two points to create at least one line segment
@@ -150,7 +158,7 @@ fn op_score_from_zxcvbn(zx_score: ZxScore, points: &'static [&'static Point]) ->
 
     struct Segment {
         upper: ZxScore,
-        line_function: Box<dyn Fn(ZxScore) -> f32>,
+        line_function: Box<dyn Fn(ZxScore) -> OpScore>,
     };
 
     let mut segments: Vec<Segment> = Vec::new();
@@ -204,7 +212,7 @@ fn equations_points(points: &'static [&'static Point]) -> Option<String> {
         let line = line_from_points(first, second)?;
 
         let b = line(ZxScore(0.0));
-        let m = (line(first.zx) - line(second.zx)) / (first.zx - second.zx).to_f32();
+        let m = (line(first.zx) - line(second.zx)).to_f32() / (first.zx - second.zx).to_f32();
 
         messages.push_str(&format!("\nFor points {} and {}:", first, second));
         messages.push_str(&format!("\ty = {}x + {}", m, b));
