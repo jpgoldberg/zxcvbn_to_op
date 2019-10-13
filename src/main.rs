@@ -1,7 +1,7 @@
 extern crate float_cmp;
 
 use float_cmp::ApproxEqRatio;
-use std::cmp::Ordering;
+use std::ops::{Sub,Div};
 
 use std::fmt;
 
@@ -17,12 +17,45 @@ impl ZxScore {
     fn to_f32(&self) -> f32 {
         self.0
     }
+    fn value(&self) -> f32 {
+        self.to_f32()
+    }
 
 }
 
 impl OpScore {
     fn to_f32(&self) -> f32 {
         self.0
+    }
+
+    fn value(&self) -> f32 {
+        self.to_f32()
+    }
+}
+
+impl Div for ZxScore {
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self::Output {
+        ZxScore(self.to_f32()/rhs.to_f32())
+    }
+}
+
+impl Sub for ZxScore {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self::Output {
+        ZxScore(self.value() - other.value())
+    }
+}
+
+impl fmt::Display for ZxScore {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value())
+    }
+}
+
+impl fmt::Display for OpScore {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value())
     }
 }
 
@@ -75,7 +108,7 @@ fn main() {
 
 impl fmt::Display for Point {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({}, {})", self.zx.to_f32(), self.op.to_f32())
+        write!(f, "({}, {})", self.zx, self.op)
     }
 }
 
@@ -171,7 +204,7 @@ fn equations_points(points: &'static [&'static Point]) -> Option<String> {
         let line = line_from_points(first, second)?;
 
         let b = line(ZxScore(0.0));
-        let m = (line(first.zx) - line(second.zx)) / (first.zx.to_f32() - second.zx.to_f32());
+        let m = (line(first.zx) - line(second.zx)) / (first.zx - second.zx).to_f32();
 
         messages.push_str(&format!("\nFor points {} and {}:", first, second));
         messages.push_str(&format!("\ty = {}x + {}", m, b));
