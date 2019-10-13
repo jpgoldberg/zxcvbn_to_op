@@ -7,7 +7,7 @@ use std::fmt;
 
 const MAX_OP_STRENGTH_SCORE: f32 = 100.0;
 
-#[derive(Clone,Copy)]
+#[derive(PartialEq,PartialOrd,Clone,Copy)]
 struct ZxScore(pub f32);
 
 #[derive(PartialEq)]
@@ -18,59 +18,6 @@ impl ZxScore {
         self.0
     }
 
-}
-
-impl PartialEq for ZxScore {
-    /// Because these scores are inherently approximate, we give
-    /// some wiggle room for equality
-    fn eq(&self, other: &ZxScore) -> bool {
-        self.to_f32().approx_eq_ratio(&other.to_f32(), 0.00001)
-    }
-    fn ne(&self, other: &ZxScore) -> bool {
-        !self.eq(&other)
-    }
-}
-
-impl PartialOrd for ZxScore {
-    fn partial_cmp(&self, other: &ZxScore) -> Option<Ordering> {
-        let s = self.to_f32();
-        let o = other.to_f32();
-
-        if s.is_nan() || o.is_nan() {
-            return None;
-        }
-        if self.eq(&other) {
-            return Some(Ordering::Equal);
-        }
-        match s < o {
-            true => Some(Ordering::Less),
-            _ => Some(Ordering::Greater),
-        }
-    }
-    fn lt(&self, other: &ZxScore) -> bool {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Less) => true,
-            _ => false, // includes None case
-        }
-    }
-    fn gt(&self, other: &ZxScore) -> bool {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Greater) => true,
-            _ => false, // includes None case
-        }
-    }
-    fn le(&self, other: &ZxScore) -> bool {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Less) | Some(Ordering::Equal) => true,
-            _ => false, // includes None case
-        }
-    }
-    fn ge(&self, other: &ZxScore) -> bool {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Greater) | Some(Ordering::Equal) => true,
-            _ => false, // includes None case
-        }
-    }
 }
 
 impl OpScore {
