@@ -79,3 +79,16 @@ impl fmt::Display for Point {
     }
 }
 
+// And now for some computations
+
+use std::f32::consts::{LN_2,LN_10};
+#[allow(dead_code)]
+impl ZxScore {
+    /// ZxScores are very rough estimations. Converting them to bits doesn't change that
+    pub fn to_bits(&self) -> f32 {
+        self.value() * (LN_10/LN_2)
+    }
+    pub fn from_bits(bits: f32) -> ZxScore {
+        ZxScore(bits * (LN_2/LN_10))
+    }
+}
