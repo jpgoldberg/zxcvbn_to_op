@@ -1,77 +1,11 @@
 extern crate float_cmp;
 
 use float_cmp::ApproxEqRatio;
-use std::ops::{Sub,Div};
 
-use std::fmt;
+mod my;
+use my::*;
 
 const MAX_OP_STRENGTH_SCORE: OpScore = OpScore(100.0);
-
-#[derive(PartialEq,PartialOrd,Clone,Copy)]
-struct ZxScore(pub f32);
-
-#[derive(PartialEq)]
-struct OpScore(pub f32);
-
-impl ZxScore {
-    fn to_f32(&self) -> f32 {
-        self.0
-    }
-    fn value(&self) -> f32 {
-        self.to_f32()
-    }
-
-}
-
-impl OpScore {
-    fn to_f32(&self) -> f32 {
-        self.0
-    }
-
-    fn value(&self) -> f32 {
-        self.to_f32()
-    }
-}
-
-impl Div for ZxScore {
-    type Output = Self;
-    fn div(self, rhs: Self) -> Self::Output {
-        ZxScore(self.to_f32()/rhs.to_f32())
-    }
-}
-
-impl Sub for ZxScore {
-    type Output = Self;
-    fn sub(self, other: Self) -> Self::Output {
-        ZxScore(self.value() - other.value())
-    }
-}
-
-
-impl Sub for OpScore {
-    type Output = Self;
-    fn sub(self, other: Self) -> Self::Output {
-        OpScore(self.value() - other.value())
-    }
-}
-
-impl fmt::Display for ZxScore {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.value())
-    }
-}
-
-impl fmt::Display for OpScore {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.value())
-    }
-}
-
-// just need to create the mapping function from points
-struct Point {
-    zx: ZxScore,
-    op: OpScore,
-}
 
 /// // control points determined by eyeballing OP vs ZXCVBN scatter plot
 const CONTROL_POINTS: &'static [&'static Point] = &[
@@ -111,12 +45,6 @@ fn main() {
         let op =
             op_score_from_zxcvbn(ZxScore(*z), CONTROL_POINTS).expect(&format!("expected score for {}", z));
         println!("f({}) = {}", z, op);
-    }
-}
-
-impl fmt::Display for Point {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({}, {})", self.zx, self.op)
     }
 }
 
