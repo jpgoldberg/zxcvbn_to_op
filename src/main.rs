@@ -1,57 +1,146 @@
 extern crate float_cmp;
 
 use float_cmp::ApproxEqRatio;
+use std::cmp::Ordering;
 
 use std::fmt;
 
 const MAX_OP_STRENGTH_SCORE: f32 = 100.0;
 
+#[derive(Clone,Copy)]
+struct ZxScore(pub f32);
+
+#[derive(PartialEq)]
+struct OpScore(pub f32);
+
+impl ZxScore {
+    fn to_f32(&self) -> f32 {
+        self.0
+    }
+
+}
+
+impl PartialEq for ZxScore {
+    /// Because these scores are inherently approximate, we give
+    /// some wiggle room for equality
+    fn eq(&self, other: &ZxScore) -> bool {
+        self.to_f32().approx_eq_ratio(&other.to_f32(), 0.00001)
+    }
+    fn ne(&self, other: &ZxScore) -> bool {
+        !self.eq(&other)
+    }
+}
+
+impl PartialOrd for ZxScore {
+    fn partial_cmp(&self, other: &ZxScore) -> Option<Ordering> {
+        let s = self.to_f32();
+        let o = other.to_f32();
+
+        if s.is_nan() || o.is_nan() {
+            return None;
+        }
+        if self.eq(&other) {
+            return Some(Ordering::Equal);
+        }
+        match s < o {
+            true => Some(Ordering::Less),
+            _ => Some(Ordering::Greater),
+        }
+    }
+    fn lt(&self, other: &ZxScore) -> bool {
+        match self.partial_cmp(&other) {
+            Some(Ordering::Less) => true,
+            _ => false, // includes None case
+        }
+    }
+    fn gt(&self, other: &ZxScore) -> bool {
+        match self.partial_cmp(&other) {
+            Some(Ordering::Greater) => true,
+            _ => false, // includes None case
+        }
+    }
+    fn le(&self, other: &ZxScore) -> bool {
+        match self.partial_cmp(&other) {
+            Some(Ordering::Less) | Some(Ordering::Equal) => true,
+            _ => false, // includes None case
+        }
+    }
+    fn ge(&self, other: &ZxScore) -> bool {
+        match self.partial_cmp(&other) {
+            Some(Ordering::Greater) | Some(Ordering::Equal) => true,
+            _ => false, // includes None case
+        }
+    }
+}
+
+impl OpScore {
+    fn to_f32(&self) -> f32 {
+        self.0
+    }
+}
+
+// just need to create the mapping function from points
+struct Point {
+    zx: ZxScore,
+    op: OpScore,
+}
+
 /// // control points determined by eyeballing OP vs ZXCVBN scatter plot
 const CONTROL_POINTS: &'static [&'static Point] = &[
-    &Point { zx: 0.0, op: 1.0 },
-    &Point { zx: 4.0, op: 8.0 },
-    &Point { zx: 8.0, op: 45.0 },
-    &Point { zx: 14.0, op: 57.0 },
     &Point {
-        zx: 20.0,
-        op: 100.0,
+        zx: ZxScore(0.0),
+        op: OpScore(1.0),
+    },
+    &Point {
+        zx: ZxScore(4.0),
+        op: OpScore(8.0),
+    },
+    &Point {
+        zx: ZxScore(8.0),
+        op: OpScore(45.0),
+    },
+    &Point {
+        zx: ZxScore(14.0),
+        op: OpScore(57.0),
+    },
+    &Point {
+        zx: ZxScore(20.0),
+        op: OpScore(100.0),
     },
 ];
 
 fn main() {
-    println!("{}", equations_points(CONTROL_POINTS).expect("expected message")); // just print out what our functions are
+    println!(
+        "{}",
+        equations_points(CONTROL_POINTS).expect("expected message")
+    ); // just print out what our functions are
 
     // should really be doing this in test functions
     for z in &[
         0.0, 0.3, 2.0, 3.5, 4.2, 5.5, 6.2, 8.4, 9.0, 11.0, 12.0, 13.6, 15.0, 16.0, 17.0, 18.1,
         19.0, 19.9, 21.0, 24.0, 120.0,
     ] {
-        let op = op_score_from_zxcvbn(*z, CONTROL_POINTS).expect(&format!("expected score for {}", z));
+        let op =
+            op_score_from_zxcvbn(ZxScore(*z), CONTROL_POINTS).expect(&format!("expected score for {}", z));
         println!("f({}) = {}", z, op);
     }
 }
 
-// just need to create the mapping function from points
-struct Point {
-    zx: f32,
-    op: f32,
-}
-
 impl fmt::Display for Point {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({}, {})", self.zx, self.op)
+        write!(f, "({}, {})", self.zx.to_f32(), self.op.to_f32())
     }
 }
 
 /// returns a function the the strait line that goes through points p1 and p2
 /// Technically this returns a closure, but the closure is boxed with fixed
 /// values moved into it. So it's easier to think of it as a function.
-fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(f32) -> f32>> {
+fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(ZxScore) -> f32>> {
     // just some convenience naming
-    let x1 = p1.zx;
-    let y1 = p1.op;
-    let x2 = p2.zx;
-    let y2 = p2.op;
+    let x1 = p1.zx.to_f32();
+    let y1 = p1.op.to_f32();
+    let x2 = p2.zx.to_f32();
+    let y2 = p2.op.to_f32();
 
     if x1.approx_eq_ratio(&x2, 0.001) {
         return None;
@@ -61,10 +150,10 @@ fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(f32) -> f32>> {
     let m = (y2 - y1) / (x2 - x1);
     let b = y1 - (m * x1);
 
-    Some(Box::new(move |x| x * m + b))
+    Some(Box::new(move |x| x.to_f32() * m + b))
 }
 
-fn op_score_from_zxcvbn(zx_score: f32, points:  &'static [&'static Point]) -> Option<f32> {
+fn op_score_from_zxcvbn(zx_score: ZxScore, points: &'static [&'static Point]) -> Option<f32> {
     // We need to create a sequence of linear functions based on pairs of points
 
     // We need at least two points to create at least one line segment
@@ -72,7 +161,7 @@ fn op_score_from_zxcvbn(zx_score: f32, points:  &'static [&'static Point]) -> Op
         return None;
     }
 
-    if zx_score < 0.0 {
+    if zx_score.to_f32() < 0.0 {
         return None; // weird input should signal some sort of error
     }
 
@@ -80,8 +169,8 @@ fn op_score_from_zxcvbn(zx_score: f32, points:  &'static [&'static Point]) -> Op
     // we have for that range
 
     struct Segment {
-        upper: f32,
-        line_function: Box<dyn Fn(f32) -> f32>,
+        upper: ZxScore,
+        line_function: Box<dyn Fn(ZxScore) -> f32>,
     };
 
     let mut segments: Vec<Segment> = Vec::new();
@@ -107,7 +196,7 @@ fn op_score_from_zxcvbn(zx_score: f32, points:  &'static [&'static Point]) -> Op
         // If we don't find anything, we've gone over the top of our defined range
         // and so return our maximum op_score
         .unwrap_or(Segment {
-            upper: std::f32::MAX,
+            upper: ZxScore(std::f32::MAX),
             line_function: Box::new(|_| MAX_OP_STRENGTH_SCORE),
         })
         .line_function)(zx_score);
@@ -134,8 +223,8 @@ fn equations_points(points: &'static [&'static Point]) -> Option<String> {
         let second = pair[1];
         let line = line_from_points(first, second)?;
 
-        let b = line(0.0);
-        let m = (line(first.zx) - line(second.zx)) / (first.zx - second.zx);
+        let b = line(ZxScore(0.0));
+        let m = (line(first.zx) - line(second.zx)) / (first.zx.to_f32() - second.zx.to_f32());
 
         messages.push_str(&format!("\nFor points {} and {}:", first, second));
         messages.push_str(&format!("\ty = {}x + {}", m, b));
