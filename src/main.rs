@@ -1,7 +1,5 @@
 extern crate float_cmp;
 
-use float_cmp::ApproxEqRatio;
-
 mod my;
 use my::*;
 
@@ -42,31 +40,10 @@ fn main() {
         0.0, 0.3, 2.0, 3.5, 4.2, 5.5, 6.2, 8.4, 9.0, 11.0, 12.0, 13.6, 15.0, 16.0, 17.0, 18.1,
         19.0, 19.9, 21.0, 24.0, 120.0,
     ] {
-        let op =
-            op_score_from_zxcvbn(ZxScore(*z), CONTROL_POINTS).expect(&format!("expected score for {}", z));
+        let op = op_score_from_zxcvbn(ZxScore(*z), CONTROL_POINTS)
+            .expect(&format!("expected score for {}", z));
         println!("f({}) = {}", z, op);
     }
-}
-
-/// returns a function the the strait line that goes through points p1 and p2
-/// Technically this returns a closure, but the closure is boxed with fixed
-/// values moved into it. So it's easier to think of it as a function.
-fn line_from_points(p1: &Point, p2: &Point) -> Option<Box<dyn Fn(ZxScore) -> OpScore>> {
-    // just some convenience naming
-    let x1 = p1.zx.to_f32();
-    let y1 = p1.op.to_f32();
-    let x2 = p2.zx.to_f32();
-    let y2 = p2.op.to_f32();
-
-    if x1.approx_eq_ratio(&x2, 0.001) {
-        return None;
-    }
-
-    // use American notation of y = mx + b
-    let m = (y2 - y1) / (x2 - x1);
-    let b = y1 - (m * x1);
-
-    Some(Box::new(move |x| OpScore(x.value() * m + b)))
 }
 
 fn op_score_from_zxcvbn(zx_score: ZxScore, points: &'static [&'static Point]) -> Option<OpScore> {
@@ -101,7 +78,7 @@ fn op_score_from_zxcvbn(zx_score: ZxScore, points: &'static [&'static Point]) ->
         let second = &points[i];
         segments.push(Segment {
             upper: second.zx,
-            line_function: line_from_points(first, second)?,
+            line_function: first.line_from_points(second)?,
         });
     }
 
@@ -137,7 +114,7 @@ fn equations_points(points: &'static [&'static Point]) -> Option<String> {
     for pair in points.windows(2) {
         let first = pair[0];
         let second = pair[1];
-        let line = line_from_points(first, second)?;
+        let line = first.line_from_points(second)?;
 
         let b = line(ZxScore(0.0));
         let m = (line(first.zx) - line(second.zx)).to_f32() / (first.zx - second.zx).to_f32();
@@ -147,4 +124,106 @@ fn equations_points(points: &'static [&'static Point]) -> Option<String> {
     }
 
     Some(messages)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use float_cmp::ApproxEqRatio;
+
+    const TEST_POINTS: &'static [&'static Point] = &[
+        &Point {
+            zx: ZxScore(0.0),
+            op: OpScore(0.0),
+        }, // y = (1/2)x + 0
+        &Point {
+            zx: ZxScore(40.0),
+            op: OpScore(20.0),
+        }, // y = 4x + 20
+        &Point {
+            zx: ZxScore(60.0),
+            op: OpScore(100.0),
+        },
+    ];
+
+    struct TestVector {
+        zx: f32,
+        expected: f32,
+    }
+
+    #[test]
+    fn test_interpolation() {
+        // These tests are build around TEST_POINTS, so do not depend on our actual
+        // control points.
+        let tests = &[
+            TestVector {
+                zx: 0.0,
+                expected: 0.0,
+            },
+            TestVector {
+                zx: 6.0,
+                expected: 3.0,
+            },
+            TestVector {
+                zx: 12.0,
+                expected: 6.0,
+            },
+            TestVector {
+                zx: 18.0,
+                expected: 9.0,
+            },
+            TestVector {
+                zx: 24.0,
+                expected: 12.0,
+            },
+            TestVector {
+                zx: 30.0,
+                expected: 15.0,
+            },
+            TestVector {
+                zx: 39.0,
+                expected: 19.5,
+            },
+            TestVector {
+                zx: 40.0,
+                expected: 20.0,
+            },
+            TestVector {
+                zx: 41.0,
+                expected: 24.0,
+            },
+            TestVector {
+                zx: 44.0,
+                expected: 36.0,
+            },
+            TestVector {
+                zx: 50.0,
+                expected: 60.0,
+            },
+            TestVector {
+                zx: 59.0,
+                expected: 96.0,
+            },
+            TestVector {
+                zx: 60.0,
+                expected: 100.0,
+            },
+            TestVector {
+                zx: 61.0,
+                expected: MAX_OP_STRENGTH_SCORE.value(),
+            },
+        ];
+
+        for t in tests {
+            let z = ZxScore(t.zx);
+            let op = op_score_from_zxcvbn(z, TEST_POINTS).unwrap().value();
+            assert!(
+                op.approx_eq_ratio(&t.expected, 0.01),
+                "f({}) should be {}. Got {}",
+                t.zx,
+                t.expected,
+                op
+            );
+        }
+    }
 }

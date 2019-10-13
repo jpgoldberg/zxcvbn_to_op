@@ -1,5 +1,5 @@
 [package]
-name = "PSM"
+name = "psm"
 version = "0.1.0"
 authors = ["Jeffrey Goldberg <jeff@agilebits.com>"]
 edition = "2018"
