@@ -226,4 +226,66 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_b5book_entropy_scale() {
+        struct TestData {
+            top_of: String,
+            bits: f32,
+            op: f32,
+        }
+
+        let tests = &[
+            TestData {
+                top_of: "Terrible".to_string(),
+                bits: 20.0,
+                op: 26.0,
+            },
+            TestData {
+                top_of: "Weak".to_string(),
+                bits: 33.0,
+                op: 44.0,
+            },
+            TestData {
+                top_of: "Fair".to_string(),
+                bits: 40.0,
+                op: 53.0,
+            },
+            TestData {
+                top_of: "Good".to_string(),
+                bits: 45.0,
+                op: 60.0,
+            },
+            TestData {
+                top_of: "Very Good".to_string(),
+                bits: 55.0,
+                op: 73.0,
+            },
+            TestData {
+                top_of: "Excellent".to_string(),
+                bits: 64.0,
+                op: 85.0,
+            },
+            TestData {
+                top_of: "Fantastic".to_string(),
+                bits: 75.0,
+                op: 85.0,
+            },
+        ];
+
+        // we are not going to get the expected conversion,
+        // so we just print out results
+
+        for t in tests {
+            let op = ZxScore::from_bits(t.bits)
+                .to_op_score(CONTROL_POINTS)
+                .unwrap();
+
+            // run with nocapture to see results
+            println!(
+                "For {} bits at top of {} op is {}, Target: {}",
+                t.bits, t.top_of, op, t.op
+            );
+        }
+    }
 }

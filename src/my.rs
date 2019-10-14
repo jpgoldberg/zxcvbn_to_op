@@ -4,6 +4,8 @@ use float_cmp::ApproxEqRatio;
 use std::fmt;
 use std::ops::{Div, Sub};
 
+use crate::MAX_OP_STRENGTH_SCORE;
+
 /// ZxScores are what we get from zxcvbn `guesses_log10`
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
 pub struct ZxScore(pub f32);
@@ -90,6 +92,37 @@ impl ZxScore {
     pub fn from_bits(bits: f32) -> ZxScore {
         ZxScore(bits * (LN_2 / LN_10))
     }
+
+    pub fn to_op_score(&self, points: &'static [&'static Point]) -> Option<OpScore> {
+        // We need at least two points to create at least one line segment
+        let zx = self.value();
+
+        if zx < 0.0 {
+            return None;
+        }
+
+        if zx >= 20.0 {
+            return Some(MAX_OP_STRENGTH_SCORE);
+        }
+
+        let g_pts: &Vec<GenericPoint> = &points
+            .iter()
+            .map(|p| GenericPoint {
+                x: p.zx.value() as f64,
+                y: p.op.value() as f64,
+            })
+            .collect();
+
+        let ret = connected_lines_at(g_pts.to_vec(), zx as f64)?;
+        let ret = ret as f32;
+        Some(OpScore(ret))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct GenericPoint {
+    x: f64,
+    y: f64,
 }
 
 #[allow(dead_code)]
@@ -97,68 +130,24 @@ impl OpScore {
     pub fn to_zx_score(&self, points: &'static [&'static Point]) -> Option<ZxScore> {
         // We need at least two points to create at least one line segment
         let op = self.value();
-        if points.len() < 2 {
-            return None;
-        }
+
         if op < 0.0 || op > 100.0 {
             return None;
         }
 
         // Swaps x and y while converting to generic points
-        let generic_points: &Vec<GenericPoint> = &points.iter().map(|p| GenericPoint {
-            x: p.op.value() as f64,
-            y: p.zx.value() as f64,
-        }).collect();
-
-
-        // The rest is really ugly, as I'm reusing code for the other direction,
-        // but I typed things so strongly that I can't do without really confusing names
-        struct Segment {
-            upper: f64,
-            line_function: Box<dyn Fn(f64) -> f64>,
-        };
-
-        let mut segments: Vec<Segment> = Vec::new();
-        segments.reserve_exact(points.len() - 1);
-
-        // this looping could be done more nicely with iter and nth(). But
-        // I'm old and don't know these new fangled things that kids use today.
-        //
-        // Deliberately starts at 1, as we look at element and the one _before_ it
-        for i in 1..generic_points.len() {
-            let first = &generic_points[i - 1];
-            let second = &generic_points[i];
-            
-            segments.push(Segment {
-                upper: second.x,
-                line_function: first.line_from_points(second)?,
-            });
-        }
-
-        // segments now has all of the information need to compute the op score.
-        let ret = (segments
-            .into_iter()
-            .find(|s| s.upper > op.into())
-            // If we don't find anything, we've gone over the top of our defined range
-            // and so return our maximum op_score
-            .unwrap_or(Segment {
-                upper: 101.0,
-                line_function: Box::new(|_| 40.0),
+        let generic_points: &Vec<GenericPoint> = &points
+            .iter()
+            .map(|p| GenericPoint {
+                x: p.op.value() as f64,
+                y: p.zx.value() as f64,
             })
-            .line_function)(op.into());
+            .collect();
 
-        Some(ZxScore(ret as f32))
+        let ret = connected_lines_at(generic_points.to_vec(), op as f64)?;
+        let ret = ret as f32;
+        Some(ZxScore(ret))
     }
-}
-
-// returns a function the the strait line that goes through points p1 and p2
-/// Technically this returns a closure, but the closure is boxed with fixed
-/// values moved into it. So it's easier to think of it as a function.
-
-#[derive(Clone, Copy)]
-struct GenericPoint {
-    x: f64,
-    y: f64,
 }
 
 impl GenericPoint {
@@ -201,4 +190,44 @@ impl Point {
             OpScore(generic_line(x.value() as f64) as f32)
         }))
     }
+}
+
+/// This will return None if any of the following are true
+/// - There aren't at least two points from which to create a line
+/// - The x values of adjacent points are too close to each other
+/// - The points are not ordered ascending in x value
+/// - The input x is greater than the largest x value for a point
+///
+/// This is why this function is not public. Public callers should
+/// make sure that input is sane or handle errors
+fn connected_lines_at(points: Vec<GenericPoint>, x: f64) -> Option<f64> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    struct Segment {
+        upper: f64,
+        line_function: Box<dyn Fn(f64) -> f64>,
+    };
+    let mut segments: Vec<Segment> = Vec::new();
+    segments.reserve_exact(points.len() - 1);
+
+    for pair in points.windows(2) {
+        let first = &pair[0];
+        let second = &pair[1];
+
+        if !(second.x > first.x) {
+            return None;
+        }
+
+        segments.push(Segment {
+            upper: first.x,
+            line_function: first.line_from_points(second)?,
+        })
+    }
+
+    // segments now has all of the information need to compute the op score.
+    Some((segments.into_iter().find(|s| s.upper > x)?.line_function)(
+        x,
+    ))
 }
