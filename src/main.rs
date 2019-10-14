@@ -139,4 +139,28 @@ mod tests {
             println!("\top is {}, Target: {}", op, t.op);
         }
     }
+
+    // This is just for printing out information about what is
+    // computed from sets of points. It plays no role in actually converting
+    // anything
+    #[test]
+    #[ignore]
+    // run with `cargo test -- --nocapture --ignored`
+    fn display_equations() {
+        let points = CONTROL_POINTS;
+        // assumes that points are already sorted
+        assert!(points.len() >= 2, "Too few points: {}", points.len());
+
+        println!("Equations for point pairs");
+        for pair in points.windows(2) {
+            let first = pair[0];
+            let second = pair[1];
+            let line = first.line_from_points(second).unwrap();
+
+            let b = line(ZxScore(0.0));
+            let m = (line(first.zx) - line(second.zx)).to_f32() / (first.zx - second.zx).to_f32();
+
+            println!("\t{} and {}: y = {}x + {}", first, second, m, b);
+        }
+    }
 }

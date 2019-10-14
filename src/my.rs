@@ -338,7 +338,6 @@ mod tests {
 
     #[test]
     fn test_inverse() {
-
         // can only test for values for which the function and its
         // inverse are well defined.
         for i in 1..8 {
