@@ -101,10 +101,6 @@ impl ZxScore {
             return None;
         }
 
-        if zx >= 20.0 {
-            return Some(MAX_OP_STRENGTH_SCORE);
-        }
-
         let g_pts: &Vec<GenericPoint> = &points
             .iter()
             .map(|p| GenericPoint {
@@ -112,8 +108,8 @@ impl ZxScore {
                 y: p.op.value() as f64,
             })
             .collect();
-
-        let ret = connected_lines_at(g_pts.to_vec(), zx as f64)?;
+        let max_out = MAX_OP_STRENGTH_SCORE.value() as f64;
+        let ret = connected_lines_at(g_pts.to_vec(), zx as f64, max_out)?;
         let ret = ret as f32;
         Some(OpScore(ret))
     }
@@ -144,7 +140,8 @@ impl OpScore {
             })
             .collect();
 
-        let ret = connected_lines_at(generic_points.to_vec(), op as f64)?;
+        let max_out = 40.0; // corresponds to roughly 128 bits
+        let ret = connected_lines_at(generic_points.to_vec(), op as f64, max_out)?;
         let ret = ret as f32;
         Some(ZxScore(ret))
     }
@@ -200,7 +197,7 @@ impl Point {
 ///
 /// This is why this function is not public. Public callers should
 /// make sure that input is sane or handle errors
-fn connected_lines_at(points: Vec<GenericPoint>, x: f64) -> Option<f64> {
+fn connected_lines_at(points: Vec<GenericPoint>, x: f64, max: f64) -> Option<f64> {
     if points.len() < 2 {
         return None;
     }
@@ -210,7 +207,7 @@ fn connected_lines_at(points: Vec<GenericPoint>, x: f64) -> Option<f64> {
         line_function: Box<dyn Fn(f64) -> f64>,
     };
     let mut segments: Vec<Segment> = Vec::new();
-    segments.reserve_exact(points.len() - 1);
+    segments.reserve_exact(points.len());
 
     for pair in points.windows(2) {
         let first = &pair[0];
@@ -221,13 +218,18 @@ fn connected_lines_at(points: Vec<GenericPoint>, x: f64) -> Option<f64> {
         }
 
         segments.push(Segment {
-            upper: first.x,
+            upper: second.x,
             line_function: first.line_from_points(second)?,
         })
     }
 
     // segments now has all of the information need to compute the op score.
-    Some((segments.into_iter().find(|s| s.upper > x)?.line_function)(
-        x,
-    ))
+    Some((segments
+        .into_iter()
+        .find(|s| s.upper > x)
+        .unwrap_or(Segment {
+            upper: 0.0,
+            line_function: Box::new(move |_| max),
+        })
+        .line_function)(x))
 }

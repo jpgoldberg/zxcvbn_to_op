@@ -216,9 +216,10 @@ mod tests {
 
         for t in tests {
             let z = ZxScore(t.zx);
-            let op = op_score_from_zxcvbn(z, TEST_POINTS).unwrap().value();
+            // let op = op_score_from_zxcvbn(z, TEST_POINTS).unwrap().value();
+            let op = z.to_op_score(TEST_POINTS).unwrap();
             assert!(
-                op.approx_eq_ratio(&t.expected, 0.01),
+                op.to_f32().approx_eq_ratio(&t.expected, 0.01),
                 "f({}) should be {}. Got {}",
                 t.zx,
                 t.expected,
@@ -282,10 +283,9 @@ mod tests {
                 .unwrap();
 
             // run with nocapture to see results
-            println!(
-                "For {} bits at top of {} op is {}, Target: {}",
-                t.bits, t.top_of, op, t.op
-            );
+            println!("For top of {}", t.top_of);
+            println!("\t{} bits is {} zscore", t.bits, ZxScore::from_bits(t.bits));
+            println!("\top is {}, Target: {}", op, t.op);
         }
     }
 }
