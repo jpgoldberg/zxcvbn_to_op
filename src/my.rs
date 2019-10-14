@@ -233,3 +233,124 @@ fn connected_lines_at(points: Vec<GenericPoint>, x: f64, max: f64) -> Option<f64
         })
         .line_function)(x))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use float_cmp::ApproxEqRatio;
+
+    const TEST_POINTS: &'static [&'static Point] = &[
+        &Point {
+            zx: ZxScore(0.0),
+            op: OpScore(0.0),
+        }, // y = (1/2)x + 0
+        &Point {
+            zx: ZxScore(40.0),
+            op: OpScore(20.0),
+        }, // y = 4x + 20
+        &Point {
+            zx: ZxScore(60.0),
+            op: OpScore(100.0),
+        },
+    ];
+
+    struct TestVector {
+        zx: f32,
+        expected: f32,
+    }
+
+    #[test]
+    fn test_interpolation() {
+        // These tests are build around TEST_POINTS, so do not depend on our actual
+        // control points.
+        let tests = &[
+            TestVector {
+                zx: 0.0,
+                expected: 0.0,
+            },
+            TestVector {
+                zx: 6.0,
+                expected: 3.0,
+            },
+            TestVector {
+                zx: 12.0,
+                expected: 6.0,
+            },
+            TestVector {
+                zx: 18.0,
+                expected: 9.0,
+            },
+            TestVector {
+                zx: 24.0,
+                expected: 12.0,
+            },
+            TestVector {
+                zx: 30.0,
+                expected: 15.0,
+            },
+            TestVector {
+                zx: 39.0,
+                expected: 19.5,
+            },
+            TestVector {
+                zx: 40.0,
+                expected: 20.0,
+            },
+            TestVector {
+                zx: 41.0,
+                expected: 24.0,
+            },
+            TestVector {
+                zx: 44.0,
+                expected: 36.0,
+            },
+            TestVector {
+                zx: 50.0,
+                expected: 60.0,
+            },
+            TestVector {
+                zx: 59.0,
+                expected: 96.0,
+            },
+            TestVector {
+                zx: 60.0,
+                expected: 100.0,
+            },
+            TestVector {
+                zx: 61.0,
+                expected: MAX_OP_STRENGTH_SCORE.value(),
+            },
+        ];
+
+        for t in tests {
+            let z = ZxScore(t.zx);
+            // let op = op_score_from_zxcvbn(z, TEST_POINTS).unwrap().value();
+            let op = z.to_op_score(TEST_POINTS).unwrap();
+            assert!(
+                op.to_f32().approx_eq_ratio(&t.expected, 0.01),
+                "f({}) should be {}. Got {}",
+                t.zx,
+                t.expected,
+                op
+            );
+        }
+    }
+
+    #[test]
+    fn test_inverse() {
+
+        // can only test for values for which the function and its
+        // inverse are well defined.
+        for i in 1..8 {
+            let t = ZxScore(i as f32 * 2.5);
+            let op = t.to_op_score(&crate::CONTROL_POINTS).unwrap();
+            let zx = op.to_zx_score(&crate::CONTROL_POINTS).unwrap();
+            assert!(
+                t.value().approx_eq_ratio(&zx.value(), 0.0001),
+                "t ({}) != zx ({})",
+                t,
+                op
+            );
+        }
+    }
+}
