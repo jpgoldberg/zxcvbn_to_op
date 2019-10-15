@@ -4,7 +4,49 @@ use float_cmp::ApproxEqRatio;
 use std::fmt;
 use std::ops::{Div, Sub};
 
-use crate::MAX_OP_STRENGTH_SCORE;
+/// // control points determined by eyeballing OP vs ZXCVBN scatter plot
+pub(crate) const CONTROL_POINTS: &'static [&'static Point] = &[
+    &Point {
+        zx: ZxScore(0.0),
+        op: OpScore(1.0),
+    },
+    &Point {
+        zx: ZxScore(4.0),
+        op: OpScore(8.0),
+    },
+    &Point {
+        zx: ZxScore(8.5),
+        op: OpScore(45.0),
+    },
+    &Point {
+        zx: ZxScore(13.0),
+        op: OpScore(57.0),
+    },
+    &Point {
+        zx: ZxScore(16.5),
+        op: OpScore(73.0),
+    },
+    &Point {
+        zx: ZxScore(19.25),
+        op: OpScore(85.0),
+    },
+    &Point {
+        zx: ZxScore(22.5),
+        op: OpScore(100.0),
+    },
+];
+
+pub const MAX_OP_STRENGTH_SCORE: OpScore = OpScore(100.0);
+
+/// This is the only thing that is called in normal usage
+/// Returns an error if the input is negative or if there are internal
+/// problems with the definition of the transformation function
+pub fn convert_zxcvbn_guesses_log10_to_op_strength(log10_guesses: f32) -> Result<f32, String> {
+    match ZxScore(log10_guesses).to_op_score(CONTROL_POINTS) {
+        Some(op) => Ok(op.to_f32()),
+        None => Err("Failed".to_string()),
+    }
+}
 
 /// ZxScores are what we get from zxcvbn `guesses_log10`
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
@@ -189,11 +231,16 @@ impl Point {
     }
 }
 
+/// Evaluates x on the function defined by the points. If x is
+/// above the range of that function, it will return max. If it is below
+/// the range the results will probably not be what you want. It is
+/// the callers responsibility to make sure that points and max make
+/// sense together.
+///
 /// This will return None if any of the following are true
 /// - There aren't at least two points from which to create a line
 /// - The x values of adjacent points are too close to each other
 /// - The points are not ordered ascending in x value
-/// - The input x is greater than the largest x value for a point
 ///
 /// This is why this function is not public. Public callers should
 /// make sure that input is sane or handle errors
@@ -232,6 +279,35 @@ fn connected_lines_at(points: Vec<GenericPoint>, x: f64, max: f64) -> Option<f64
             line_function: Box::new(move |_| max),
         })
         .line_function)(x))
+}
+
+// This is just for printing out information about what is
+// computed from sets of points. It plays no role in actually converting
+// anything
+fn equations_points(points: &'static [&'static Point]) -> Option<String> {
+    // assumes that points are already sorted
+    if points.len() < 2 {
+        return Some(format!(
+            "Not enough points ({}) to create any equations",
+            points.len()
+        ));
+    }
+
+    let mut messages = String::new();
+
+    for pair in points.windows(2) {
+        let first = pair[0];
+        let second = pair[1];
+        let line = first.line_from_points(second)?;
+
+        let b = line(ZxScore(0.0));
+        let m = (line(first.zx) - line(second.zx)).to_f32() / (first.zx - second.zx).to_f32();
+
+        messages.push_str(&format!("\nFor points {} and {}:", first, second));
+        messages.push_str(&format!("\ty = {}x + {}", m, b));
+    }
+
+    Some(messages)
 }
 
 #[cfg(test)]
@@ -351,5 +427,102 @@ mod tests {
                 op
             );
         }
+    }
+
+    #[test]
+    #[ignore]
+    // run with `cargo test -- --nocapture --ignored`
+    fn test_b5book_entropy_scale() {
+        struct TestData {
+            top_of: String,
+            bits: f32,
+            op: f32,
+        }
+
+        let tests = &[
+            TestData {
+                top_of: "Terrible".to_string(),
+                bits: 20.0,
+                op: 26.0,
+            },
+            TestData {
+                top_of: "Weak".to_string(),
+                bits: 33.0,
+                op: 44.0,
+            },
+            TestData {
+                top_of: "Fair".to_string(),
+                bits: 40.0,
+                op: 53.0,
+            },
+            TestData {
+                top_of: "Good".to_string(),
+                bits: 45.0,
+                op: 60.0,
+            },
+            TestData {
+                top_of: "Very Good".to_string(),
+                bits: 55.0,
+                op: 73.0,
+            },
+            TestData {
+                top_of: "Excellent".to_string(),
+                bits: 64.0,
+                op: 85.0,
+            },
+            TestData {
+                top_of: "Fantastic".to_string(),
+                bits: 75.0,
+                op: 100.0,
+            },
+        ];
+
+        for t in tests {
+            let op = ZxScore::from_bits(t.bits)
+                .to_op_score(CONTROL_POINTS)
+                .unwrap();
+
+            // run with nocapture to see results
+            println!("For top of {}", t.top_of);
+            println!("\t{} bits is {} zscore", t.bits, ZxScore::from_bits(t.bits));
+            println!("\top is {}, Target: {}", op, t.op);
+        }
+    }
+
+    // This is just for printing out information about what is
+    // computed from sets of points. It plays no role in actually converting
+    // anything
+
+    #[test]
+    #[ignore]
+    // run with `cargo test -- --nocapture --ignored`
+    fn display_equations() {
+        let points = CONTROL_POINTS;
+        // assumes that points are already sorted
+        assert!(points.len() >= 2, "Too few points: {}", points.len());
+
+        println!("Equations for point pairs");
+        for pair in points.windows(2) {
+            let first = pair[0];
+            let second = pair[1];
+            let line = first.line_from_points(second).unwrap();
+
+            let b = line(ZxScore(0.0));
+            let m = (line(first.zx) - line(second.zx)).to_f32() / (first.zx - second.zx).to_f32();
+
+            println!("\t{} and {}: y = {}x + {}", first, second, m, b);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn show_equations_control_points() {
+        println!("{}", equations_points(CONTROL_POINTS).unwrap());
+    }
+
+    #[test]
+    #[ignore]
+    fn show_equations_test_points() {
+        println!("{}", equations_points(TEST_POINTS).unwrap());
     }
 }
