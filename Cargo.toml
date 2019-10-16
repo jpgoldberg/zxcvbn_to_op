@@ -1,5 +1,5 @@
 [package]
-name = "psm"
+name = "zxcvbn_to_op"
 version = "0.1.0"
 authors = ["Jeffrey Goldberg <jeff@agilebits.com>"]
 edition = "2018"
